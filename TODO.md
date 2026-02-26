@@ -117,56 +117,115 @@ Costs per hour while endpoint is running. Stop when not in use.
 
 ---
 
-## Step 8: Download for Local/Portable Use (recommended)
+## Step 6: Download and Run Locally with Ollama (recommended)
 
-The trained LoRA adapter is yours. Download it to use anywhere:
+Together AI's dedicated endpoints cost $6.60/hr. Running locally is free.
+
+### 6a. Download the LoRA adapter from Together AI
 
 ```bash
+cd ~/mine/gerbil-lora
 together fine-tuning download ft-5f979336-8831 --output ./together-adapter
-# Adapter also available at:
-# s3://together-dev/finetune/.../ft-5f979336-8831_adapter-2026-02-26-02-46-54
 ```
 
-### Run locally with Ollama
+This gives you the LoRA adapter weights (~50-200MB) — the diff that makes
+the base Qwen model know Gerbil Scheme.
 
-Merge the adapter with the base model and convert to GGUF:
+### 6b. Install merge dependencies
+
+You need Python packages to merge the adapter into the base model and
+convert to GGUF format. This requires a GPU with 16GB+ VRAM, OR ~32GB RAM
+for CPU-only merge.
 
 ```bash
-# Needs a GPU or lots of RAM for the merge step
 pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+pip install --no-deps xformers trl peft accelerate bitsandbytes triton
+```
 
+### 6c. Merge adapter + base model → GGUF
+
+This downloads the base model (~14GB), applies the LoRA adapter on top,
+and quantizes to a single GGUF file that Ollama can run:
+
+```bash
 python3 merge_and_export.py \
   --adapter ./together-adapter \
   --base Qwen/Qwen2.5-7B-Instruct \
   --quant q4_k_m
-
-ollama create gerbil-qwen -f Modelfile
-ollama run gerbil-qwen "How do I parse JSON in Gerbil?"
 ```
 
-VRAM requirements for running locally:
+The `--base` flag downloads Qwen/Qwen2.5-7B-Instruct from HuggingFace
+automatically (one-time ~14GB download, cached for future use).
 
-| Quantization | VRAM | Speed | File Size |
-|-------------|------|-------|-----------|
-| Q4_K_M | ~5 GB | ~30-40 tok/s | ~4.5 GB |
-| Q5_K_M | ~6 GB | ~25-35 tok/s | ~5.5 GB |
-| Q8_0 | ~8 GB | ~20-25 tok/s | ~7.5 GB |
-| F16 | ~14 GB | ~15-20 tok/s | ~14 GB |
+Quantization options:
 
-Even an 8GB GPU (RTX 3060/4060) runs Q4 comfortably. CPU-only works too (~5-10 tok/s). Mac with 8GB+ handles Q4.
+| Quantization | GGUF Size | VRAM to Run | Speed | Quality |
+|-------------|-----------|-------------|-------|---------|
+| `q4_k_m` | ~4.5 GB | ~5 GB | ~30-40 tok/s | Good enough |
+| `q5_k_m` | ~5.5 GB | ~6 GB | ~25-35 tok/s | Better |
+| `q8_0` | ~7.5 GB | ~8 GB | ~20-25 tok/s | Near-lossless |
+| `f16` | ~14 GB | ~14 GB | ~15-20 tok/s | Perfect |
 
-OpenCode config for local Ollama:
+### 6d. Install Ollama (if not already installed)
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+### 6e. Import the GGUF into Ollama
+
+```bash
+cd ~/mine/gerbil-lora
+ollama create gerbil-qwen -f Modelfile
+```
+
+The `Modelfile` in this repo points to `./gerbil-qwen-gguf/unsloth.Q4_K_M.gguf`
+and sets up the Qwen ChatML template and system prompt.
+
+### 6f. Test it
+
+```bash
+ollama run gerbil-qwen "How do I parse JSON in Gerbil Scheme?"
+```
+
+Or run the full verification suite:
+```bash
+python3 verify_model.py \
+  --base-url http://localhost:11434/v1 \
+  --model gerbil-qwen \
+  -v
+```
+
+### 6g. Configure OpenCode
+
+Point OpenCode at your local Ollama:
+
 ```
 Base URL: http://localhost:11434/v1
 Model:    gerbil-qwen
 ```
 
-### Host anywhere else
+Free forever. No API costs, no idle charges, fully private.
 
-The downloaded adapter is standard PEFT/HuggingFace format. After merging, deploy to:
+### Hardware requirements to run
+
+| Hardware | Works? | Speed |
+|----------|--------|-------|
+| RTX 3060/4060 (8GB) | Yes, Q4 | ~30-40 tok/s |
+| RTX 3090/4090 (24GB) | Yes, any quant | ~40+ tok/s |
+| Mac M1/M2 8GB | Yes, Q4 | ~20-30 tok/s |
+| Mac M1/M2 16GB+ | Yes, Q8 | ~25-35 tok/s |
+| CPU only, 16GB+ RAM | Yes, Q4 | ~5-10 tok/s |
+
+---
+
+## Alternative: Host Anywhere Else
+
+The downloaded adapter is standard PEFT/HuggingFace format. After merging,
+deploy to any platform:
 
 - **HuggingFace Inference Endpoints** — push merged model, get API
-- **RunPod / Vast.ai** — deploy vLLM container
+- **RunPod / Vast.ai** — deploy vLLM container (~$0.15-0.30/hr)
 - **Fireworks AI** — upload model, get API endpoint
 - **Any OpenAI-compatible server** — vLLM, llama.cpp, TGI
 
@@ -197,7 +256,7 @@ Test prompts (a base Qwen will struggle with these):
 
 Run all 10 test prompts automatically:
 ```bash
-python3 verify_model.py --base-url <url> --model <model> --api-key <key> -v
+python3 verify_model.py --base-url <url> --model <model> -v
 ```
 
 ---
@@ -210,3 +269,4 @@ To improve the model with more data:
 2. Regenerate: `python3 convert_training_data.py`
 3. Re-upload: `python3 train_together.py upload`
 4. Retrain: `python3 train_together.py train`
+5. Re-download and merge: steps 6a-6e above
