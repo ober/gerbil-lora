@@ -67,7 +67,25 @@ python3 train_together.py status
 # Takes ~30-60 minutes
 ```
 
-## Step 5: Test on Together AI
+## Step 5: Create a Dedicated Endpoint
+
+Fine-tuned models on Together AI are NOT serverless — they need a dedicated endpoint.
+
+Create one via the UI or CLI:
+```bash
+# Via UI (check pricing first):
+# https://api.together.ai/models/jaimef_2515/Qwen2.5-7B-Instruct-74900ead
+
+# Via CLI:
+together endpoints create \
+  --model jaimef_2515/Qwen2.5-7B-Instruct-74900ead \
+  --name gerbil-qwen
+```
+
+**Note:** Dedicated endpoints have an hourly cost. Stop the endpoint when not in use.
+This is a good reason to download the adapter for local Ollama use (see Step 8).
+
+## Step 6: Test on Together AI
 
 ```bash
 python3 train_together.py test
@@ -78,7 +96,7 @@ python3 verify_model.py \
   --api-key $TOGETHER_API_KEY -v
 ```
 
-## Step 6: Use with OpenCode (hosted on Together AI)
+## Step 7: Use with OpenCode (hosted on Together AI)
 
 Point OpenCode at Together AI's API:
 
@@ -88,11 +106,11 @@ API Key:  $TOGETHER_API_KEY
 Model:    jaimef_2515/Qwen2.5-7B-Instruct-74900ead
 ```
 
-Pay-per-token, no idle costs (~$0.20/M tokens).
+Costs per hour while endpoint is running. Stop when not in use.
 
 ---
 
-## Step 7: Download for Local/Portable Use (optional)
+## Step 8: Download for Local/Portable Use (recommended)
 
 The trained LoRA adapter is yours. Download it to use anywhere:
 
