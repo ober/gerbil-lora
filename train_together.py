@@ -26,7 +26,7 @@ except ImportError:
 
 # ── Config ──────────────────────────────────────────────────────────
 BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
-TRAINING_FILE = os.path.join(os.path.dirname(__file__), "training_data.jsonl")
+TRAINING_FILE = os.path.join(os.path.dirname(__file__), "training_data_together.jsonl")
 STATE_FILE = os.path.join(os.path.dirname(__file__), ".together_state.json")
 
 LORA_R = 16

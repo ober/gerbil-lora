@@ -859,12 +859,20 @@ def main():
 
     print(f"Total after dedup:  {len(all_chatml)} ChatML, {len(all_alpaca)} Alpaca")
 
-    # Write ChatML/ShareGPT format
+    # Write ChatML/ShareGPT format (for Axolotl, LLaMA-Factory)
     chatml_path = os.path.join(OUTPUT_DIR, "training_data.jsonl")
     with open(chatml_path, "w") as f:
         for entry in all_chatml:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     print(f"\nWrote {chatml_path}")
+
+    # Write Together AI format: {"messages": [...]} per line, no extra fields
+    together_path = os.path.join(OUTPUT_DIR, "training_data_together.jsonl")
+    with open(together_path, "w") as f:
+        for entry in all_chatml:
+            together_entry = {"messages": entry["conversations"]}
+            f.write(json.dumps(together_entry, ensure_ascii=False) + "\n")
+    print(f"Wrote {together_path}")
 
     # Write Alpaca format
     alpaca_path = os.path.join(OUTPUT_DIR, "training_data_alpaca.jsonl")
@@ -891,8 +899,9 @@ def main():
 
     # Print total size
     chatml_size = os.path.getsize(chatml_path)
+    together_size = os.path.getsize(together_path)
     alpaca_size = os.path.getsize(alpaca_path)
-    print(f"\nFile sizes: ChatML={chatml_size/1024/1024:.1f}MB, Alpaca={alpaca_size/1024/1024:.1f}MB")
+    print(f"\nFile sizes: ChatML={chatml_size/1024/1024:.1f}MB, Together={together_size/1024/1024:.1f}MB, Alpaca={alpaca_size/1024/1024:.1f}MB")
 
 
 if __name__ == "__main__":
