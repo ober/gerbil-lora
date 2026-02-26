@@ -1,0 +1,18 @@
+# Training outputs
+gerbil-lora-output/
+gerbil-qwen-gguf/
+
+# Together AI state
+.together_state.json
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# Large generated data (track the generator, not the output)
+# Uncomment these if you want to track the data in git:
+# training_data.jsonl
+# training_data_alpaca.jsonl
+# training_data_alpaca.json
