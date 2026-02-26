@@ -1,320 +1,182 @@
-# Gerbil Scheme LoRA Training — Complete Guide
+# Gerbil Scheme LoRA Training — Together AI
 
 ## Status
 
-- [x] Generate training data from cookbooks, docs, source code
-- [ ] Choose hosting path (Together AI vs Local Ollama)
-- [ ] Train the LoRA
+- [x] Generate training data (5,970 entries from cookbooks, docs, source code)
+- [x] Upload training data to Together AI
+- [x] Start fine-tuning job (ft-5f979336-8831)
+- [ ] Training completes
+- [ ] Verify model with test prompts
+- [ ] Download adapter for local/portable use
 - [ ] Deploy and connect to OpenCode
 
 ---
 
-## Training Data (DONE)
+## Training Data
 
 Generated **5,970 training entries** in `~/mine/gerbil-lora/`:
 
 | File | Format | Size |
 |------|--------|------|
+| `training_data_together.jsonl` | Together AI (messages) | 8.5 MB |
 | `training_data.jsonl` | ChatML/ShareGPT | 8.9 MB |
 | `training_data_alpaca.jsonl` | Alpaca JSONL | 6.2 MB |
-| `training_data_alpaca.json` | Alpaca JSON array | 6.3 MB |
 
-Regenerate anytime: `python3 convert_training_data.py`
+Regenerate: `python3 convert_training_data.py`
 
 ---
 
-## Option A: Together AI (Recommended — no GPU needed)
+## Step 1: Setup (DONE)
 
-### Cost
-- Fine-tuning: ~$2-5 one-time
-- Inference: $0.20/M input + $0.20/M output tokens (~$0.20/heavy coding day)
-- No idle costs
-
-### Steps
-
-#### 1. Create account and get API key
-- Sign up at https://together.ai
-- Get API key from dashboard
-
-#### 2. Install CLI
 ```bash
 pip install together
 export TOGETHER_API_KEY="your-key-here"
 ```
 
-#### 3. Upload training data
+## Step 2: Upload (DONE)
+
 ```bash
-# Together AI expects ChatML/ShareGPT format
-together files upload ~/mine/gerbil-lora/training_data.jsonl
-# Note the file ID returned (e.g., file-abc123)
+together files upload ~/mine/gerbil-lora/training_data_together.jsonl
+# Returns file ID: file-f2144ecd-69ce-4dbb-bfda-e6a2a01ab2ed
 ```
 
-#### 4. Start fine-tuning
+## Step 3: Train (DONE — running)
+
 ```bash
+python3 train_together.py train
+# Or manually:
 together fine-tuning create \
-  --model Qwen/Qwen2.5-Coder-7B-Instruct \
-  --training-file file-abc123 \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --training-file file-f2144ecd-69ce-4dbb-bfda-e6a2a01ab2ed \
   --n-epochs 3 \
   --learning-rate 1e-5 \
-  --batch-size 4 \
-  --lora \
-  --lora-r 16 \
-  --lora-alpha 32
+  --batch-size 8 \
+  --lora
 ```
 
-#### 5. Monitor training
+Job ID: `ft-5f979336-8831`
+
+## Step 4: Monitor
+
 ```bash
-together fine-tuning list
-together fine-tuning retrieve ft-job-xxxxx
-# Takes ~30-60 minutes for this dataset size
+python3 train_together.py status
+# Or: together fine-tuning retrieve ft-5f979336-8831
+# Takes ~30-60 minutes
 ```
 
-#### 6. Test the model
+## Step 5: Test on Together AI
+
 ```bash
-together chat completions create \
-  --model your-org/gerbil-qwen-lora \
-  --message "How do I parse JSON in Gerbil Scheme?"
+python3 train_together.py test
+# Or:
+python3 verify_model.py \
+  --base-url https://api.together.xyz/v1 \
+  --model <model-name-from-status> \
+  --api-key $TOGETHER_API_KEY
 ```
 
-#### 7. Configure OpenCode
-In your OpenCode config (usually `~/.opencode/config.json` or similar):
-```json
-{
-  "provider": "openai-compatible",
-  "base_url": "https://api.together.xyz/v1",
-  "api_key": "your-together-api-key",
-  "model": "your-org/gerbil-qwen-lora"
-}
+## Step 6: Use with OpenCode (hosted on Together AI)
+
+Point OpenCode at Together AI's API:
+
 ```
+Base URL: https://api.together.xyz/v1
+API Key:  $TOGETHER_API_KEY
+Model:    <model-name-from-status>
+```
+
+Pay-per-token, no idle costs (~$0.20/M tokens).
 
 ---
 
-## Option B: Unsloth + Ollama (Free — needs GPU)
+## Step 7: Download for Local/Portable Use (optional)
 
-### Requirements
-- GPU with 16GB+ VRAM (RTX 4090, 3090, A100, etc.)
-- OR Mac with 32GB+ unified memory
-- ~20GB disk space
+The trained LoRA adapter is yours. Download it to use anywhere:
 
-### Steps
-
-#### 1. Install Unsloth
 ```bash
+together fine-tuning download ft-5f979336-8831 --output ./together-adapter
+```
+
+### Run locally with Ollama
+
+Merge the adapter with the base model and convert to GGUF:
+
+```bash
+# Needs a GPU or lots of RAM for the merge step
 pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
-pip install --no-deps xformers trl peft accelerate bitsandbytes triton
-```
 
-#### 2. Run training script
-Save this as `~/mine/gerbil-lora/train_unsloth.py`:
+python3 merge_and_export.py \
+  --adapter ./together-adapter \
+  --base Qwen/Qwen2.5-7B-Instruct \
+  --quant q4_k_m
 
-```python
-from unsloth import FastLanguageModel
-from trl import SFTTrainer
-from transformers import TrainingArguments
-from datasets import load_dataset
-import json
-
-# ── Config ──
-MODEL_NAME = "unsloth/Qwen2.5-Coder-7B-Instruct-bnb-4bit"
-OUTPUT_DIR = "./gerbil-lora-output"
-MAX_SEQ_LENGTH = 4096
-EPOCHS = 3
-
-# ── Load model ──
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=MODEL_NAME,
-    max_seq_length=MAX_SEQ_LENGTH,
-    dtype=None,  # auto-detect
-    load_in_4bit=True,
-)
-
-# ── Apply LoRA ──
-model = FastLanguageModel.get_peft_model(
-    model,
-    r=16,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                     "gate_proj", "up_proj", "down_proj"],
-    lora_alpha=32,
-    lora_dropout=0,
-    bias="none",
-    use_gradient_checkpointing="unsloth",
-)
-
-# ── Load training data ──
-def format_chatml(example):
-    """Convert our ChatML format to the tokenizer's chat template."""
-    messages = example["conversations"]
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-    return {"text": text}
-
-dataset = load_dataset("json", data_files="training_data.jsonl", split="train")
-dataset = dataset.map(format_chatml)
-
-# ── Train ──
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=MAX_SEQ_LENGTH,
-    dataset_num_proc=2,
-    packing=True,
-    args=TrainingArguments(
-        output_dir=OUTPUT_DIR,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,
-        warmup_steps=10,
-        num_train_epochs=EPOCHS,
-        learning_rate=2e-4,
-        fp16=True,
-        logging_steps=10,
-        optim="adamw_8bit",
-        save_strategy="epoch",
-        seed=42,
-    ),
-)
-
-trainer.train()
-
-# ── Save LoRA adapter ──
-model.save_pretrained(OUTPUT_DIR)
-tokenizer.save_pretrained(OUTPUT_DIR)
-print(f"\nLoRA adapter saved to {OUTPUT_DIR}/")
-```
-
-Run it:
-```bash
-cd ~/mine/gerbil-lora
-python3 train_unsloth.py
-# Takes ~20-40 minutes on a single A100/4090
-```
-
-#### 3. Merge and convert to GGUF for Ollama
-```python
-# Save this as merge_and_export.py
-from unsloth import FastLanguageModel
-
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name="./gerbil-lora-output",
-    max_seq_length=4096,
-    dtype=None,
-    load_in_4bit=True,
-)
-
-# Export to GGUF (Ollama format)
-# Choose quantization: q4_k_m is good balance of quality/size (~4.5GB)
-model.save_pretrained_gguf(
-    "./gerbil-qwen-gguf",
-    tokenizer,
-    quantization_method="q4_k_m",
-)
-print("GGUF model saved to ./gerbil-qwen-gguf/")
-```
-
-```bash
-python3 merge_and_export.py
-```
-
-#### 4. Import into Ollama
-Create `~/mine/gerbil-lora/Modelfile`:
-```
-FROM ./gerbil-qwen-gguf/unsloth.Q4_K_M.gguf
-
-TEMPLATE """{{ if .System }}<|im_start|>system
-{{ .System }}<|im_end|>
-{{ end }}<|im_start|>user
-{{ .Prompt }}<|im_end|>
-<|im_start|>assistant
-"""
-
-SYSTEM "You are an expert in Gerbil Scheme, a dialect of Scheme built on Gambit. You provide accurate, idiomatic Gerbil code with correct imports, function names, and arities."
-
-PARAMETER temperature 0.2
-PARAMETER num_ctx 4096
-```
-
-```bash
 ollama create gerbil-qwen -f Modelfile
 ollama run gerbil-qwen "How do I parse JSON in Gerbil?"
 ```
 
-#### 5. Configure OpenCode
-```json
-{
-  "provider": "ollama",
-  "base_url": "http://localhost:11434/v1",
-  "model": "gerbil-qwen"
-}
+VRAM requirements for running locally:
+
+| Quantization | VRAM | Speed | File Size |
+|-------------|------|-------|-----------|
+| Q4_K_M | ~5 GB | ~30-40 tok/s | ~4.5 GB |
+| Q5_K_M | ~6 GB | ~25-35 tok/s | ~5.5 GB |
+| Q8_0 | ~8 GB | ~20-25 tok/s | ~7.5 GB |
+| F16 | ~14 GB | ~15-20 tok/s | ~14 GB |
+
+Even an 8GB GPU (RTX 3060/4060) runs Q4 comfortably. CPU-only works too (~5-10 tok/s). Mac with 8GB+ handles Q4.
+
+OpenCode config for local Ollama:
+```
+Base URL: http://localhost:11434/v1
+Model:    gerbil-qwen
 ```
 
----
+### Host anywhere else
 
-## Option C: Rent a GPU for Training Only, Then Use Together AI
+The downloaded adapter is standard PEFT/HuggingFace format. After merging, deploy to:
 
-Best of both worlds — cheap training, zero-infra hosting.
+- **HuggingFace Inference Endpoints** — push merged model, get API
+- **RunPod / Vast.ai** — deploy vLLM container
+- **Fireworks AI** — upload model, get API endpoint
+- **Any OpenAI-compatible server** — vLLM, llama.cpp, TGI
 
-#### 1. Rent a GPU on RunPod or Vast.ai
-- RunPod: A100 40GB ~$1.50/hr → ~$1 total for training
-- Vast.ai: 4090 24GB ~$0.30/hr → ~$0.20 total for training
-
-#### 2. SSH in, run the Unsloth script (Option B steps 1-2)
-
-#### 3. Upload the LoRA adapter to Together AI
-```bash
-together fine-tuning upload-model \
-  --model Qwen/Qwen2.5-Coder-7B-Instruct \
-  --adapter-path ./gerbil-lora-output
-```
-
-#### 4. Configure OpenCode to use Together AI (Option A step 7)
-
-#### 5. Terminate the rented GPU
-
-Total cost: ~$1-3 one-time training + $0.20/M tokens ongoing.
+Qwen is Apache 2.0 licensed — no restrictions on commercial use.
 
 ---
 
-## Comparison
+## Verifying the Fine-Tune
 
-| | Together AI | Unsloth + Ollama | Rent GPU + Together |
-|---|---|---|---|
-| GPU needed? | No | Yes (16GB+) | Rented (~$1) |
-| Training cost | ~$2-5 | $0 (your GPU) | ~$1 (rented) |
-| Inference cost | $0.20/M tokens | $0 (local) | $0.20/M tokens |
-| Monthly cost (moderate use) | ~$5-10 | $0 + electricity | ~$5-10 |
-| Setup difficulty | Easy | Medium | Medium |
-| Latency | ~1-2s | ~0.1-0.5s (local) | ~1-2s |
-| Privacy | Data sent to API | Fully local | Data sent to API |
-
----
-
-## Verifying the Fine-Tune Worked
-
-Test these prompts — a base Qwen model will struggle with Gerbil-specific answers:
+Test prompts (a base Qwen will struggle with these):
 
 ```
 1. "How do I iterate over a hash table in Gerbil Scheme?"
-   Expected: mentions (import :std/iter), uses (for ((values k v) (in-hash ht)) ...)
+   Expected: (import :std/iter), (for ((values k v) (in-hash ht)) ...)
 
 2. "What's the difference between hash-get and hash-ref in Gerbil?"
-   Expected: hash-get is strictly 2-arity, returns #f; hash-ref throws on missing key
+   Expected: hash-get is 2-arity returns #f; hash-ref throws on missing key
 
 3. "Show me how to define a custom error class in Gerbil"
-   Expected: uses deferror-class, mentions the defraise/context gotcha
+   Expected: deferror-class from :std/error, mentions defraise/context gotcha
 
 4. "How do I build a static executable in Gerbil?"
-   Expected: mentions build.ss with (exe: "main"), GERBIL_LOADPATH, gerbil build
+   Expected: build.ss with (exe: "main"), GERBIL_LOADPATH, gerbil build
 
-5. "What's wrong with passing u8vector to a (pointer void) FFI parameter?"
-   Expected: mentions Gambit passes raw Scheme object header, recommends scheme-object type
+5. "What's wrong with passing u8vector to (pointer void) in FFI?"
+   Expected: Gambit passes raw Scheme object header, use scheme-object type
+```
+
+Run all 10 test prompts automatically:
+```bash
+python3 verify_model.py --base-url <url> --model <model> --api-key <key> -v
 ```
 
 ---
 
-## Next Steps
+## Iterating
 
-1. Pick Option A or B (or C)
-2. Run the training
-3. Verify with test prompts above
-4. Configure OpenCode
-5. Iterate — add more training data from your sessions, retrain
+To improve the model with more data:
+
+1. Add recipes to the gerbil-mcp cookbook (`gerbil_howto_add`)
+2. Regenerate: `python3 convert_training_data.py`
+3. Re-upload: `python3 train_together.py upload`
+4. Retrain: `python3 train_together.py train`

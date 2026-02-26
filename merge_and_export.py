@@ -6,7 +6,15 @@ Prerequisites:
   pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
 
 Usage:
-  python3 merge_and_export.py [quantization]
+  # From Unsloth training output:
+  python3 merge_and_export.py
+
+  # From Together AI download:
+  together fine-tuning download <job-id> --output ./together-adapter
+  python3 merge_and_export.py --adapter ./together-adapter --base Qwen/Qwen2.5-7B-Instruct
+
+  # Custom quantization:
+  python3 merge_and_export.py --quant q5_k_m
 
 Quantization options (default: q4_k_m):
   q4_k_m   — 4-bit, good balance of quality/size (~4.5GB)
@@ -19,52 +27,106 @@ After export:
   ollama run gerbil-qwen
 """
 
+import argparse
 import sys
 import os
 
-ADAPTER_DIR = os.path.join(os.path.dirname(__file__), "gerbil-lora-output")
-GGUF_DIR = os.path.join(os.path.dirname(__file__), "gerbil-qwen-gguf")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_ADAPTER_DIR = os.path.join(SCRIPT_DIR, "gerbil-lora-output")
+DEFAULT_GGUF_DIR = os.path.join(SCRIPT_DIR, "gerbil-qwen-gguf")
+DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 MAX_SEQ_LENGTH = 4096
-DEFAULT_QUANT = "q4_k_m"
 
 
 def main():
-    from unsloth import FastLanguageModel
+    parser = argparse.ArgumentParser(description="Merge LoRA adapter and export to GGUF")
+    parser.add_argument("--adapter", default=DEFAULT_ADAPTER_DIR,
+                        help=f"Path to LoRA adapter directory (default: {DEFAULT_ADAPTER_DIR})")
+    parser.add_argument("--base", default=None,
+                        help=f"Base model name for Together AI adapters (default: auto-detect, "
+                             f"fallback: {DEFAULT_BASE_MODEL})")
+    parser.add_argument("--quant", default="q4_k_m",
+                        choices=["q4_k_m", "q5_k_m", "q8_0", "f16"],
+                        help="Quantization method (default: q4_k_m)")
+    parser.add_argument("--output", default=DEFAULT_GGUF_DIR,
+                        help=f"Output directory for GGUF (default: {DEFAULT_GGUF_DIR})")
+    args = parser.parse_args()
 
-    quant = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_QUANT
-    valid_quants = ["q4_k_m", "q5_k_m", "q8_0", "f16"]
-    if quant not in valid_quants:
-        print(f"Invalid quantization: {quant}")
-        print(f"Valid options: {', '.join(valid_quants)}")
+    adapter_dir = os.path.abspath(args.adapter)
+    if not os.path.isdir(adapter_dir):
+        print(f"Adapter directory not found: {adapter_dir}")
+        print()
+        print("If you trained with Unsloth:")
+        print("  python3 train_unsloth.py   # creates ./gerbil-lora-output/")
+        print()
+        print("If you trained with Together AI:")
+        print("  together fine-tuning download <job-id> --output ./together-adapter")
+        print("  python3 merge_and_export.py --adapter ./together-adapter --base Qwen/Qwen2.5-7B-Instruct")
         sys.exit(1)
 
-    # ── Load fine-tuned model ───────────────────────────────────────
-    print(f"Loading adapter from {ADAPTER_DIR} ...")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=ADAPTER_DIR,
-        max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None,
-        load_in_4bit=True,
-    )
+    # Check if this is a standalone adapter (Together AI download) that needs
+    # a base model specified, or a full Unsloth checkpoint
+    adapter_config = os.path.join(adapter_dir, "adapter_config.json")
+    needs_base = False
+    if os.path.exists(adapter_config):
+        import json
+        with open(adapter_config) as f:
+            config = json.load(f)
+        base_from_config = config.get("base_model_name_or_path", "")
+        if base_from_config and not args.base:
+            print(f"Auto-detected base model: {base_from_config}")
+            args.base = base_from_config
+        elif not base_from_config and not args.base:
+            needs_base = True
 
-    # ── Export to GGUF ──────────────────────────────────────────────
-    print(f"Exporting to GGUF ({quant}) ...")
-    os.makedirs(GGUF_DIR, exist_ok=True)
+    if needs_base and not args.base:
+        args.base = DEFAULT_BASE_MODEL
+        print(f"No base model detected, using default: {args.base}")
+
+    from unsloth import FastLanguageModel
+
+    # ── Load model ────────────────────────────────────────────────────
+    if args.base:
+        # Together AI adapter: load base model first, then apply adapter
+        print(f"Loading base model {args.base} ...")
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=args.base,
+            max_seq_length=MAX_SEQ_LENGTH,
+            dtype=None,
+            load_in_4bit=True,
+        )
+        print(f"Applying adapter from {adapter_dir} ...")
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, adapter_dir)
+    else:
+        # Unsloth output: adapter + base model info bundled together
+        print(f"Loading adapter from {adapter_dir} ...")
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=adapter_dir,
+            max_seq_length=MAX_SEQ_LENGTH,
+            dtype=None,
+            load_in_4bit=True,
+        )
+
+    # ── Export to GGUF ────────────────────────────────────────────────
+    gguf_dir = os.path.abspath(args.output)
+    print(f"Exporting to GGUF ({args.quant}) → {gguf_dir} ...")
+    os.makedirs(gguf_dir, exist_ok=True)
 
     model.save_pretrained_gguf(
-        GGUF_DIR,
+        gguf_dir,
         tokenizer,
-        quantization_method=quant,
+        quantization_method=args.quant,
     )
 
     # Find the output file
-    gguf_files = [f for f in os.listdir(GGUF_DIR) if f.endswith(".gguf")]
+    gguf_files = [f for f in os.listdir(gguf_dir) if f.endswith(".gguf")]
     if gguf_files:
-        gguf_path = os.path.join(GGUF_DIR, gguf_files[0])
+        gguf_path = os.path.join(gguf_dir, gguf_files[0])
         size_mb = os.path.getsize(gguf_path) / 1024 / 1024
         print(f"\nGGUF saved: {gguf_path} ({size_mb:.0f} MB)")
     else:
-        print(f"\nGGUF files saved to {GGUF_DIR}/")
+        print(f"\nGGUF files saved to {gguf_dir}/")
 
     print(f"\nNext steps:")
     print(f"  ollama create gerbil-qwen -f Modelfile")

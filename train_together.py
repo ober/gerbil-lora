@@ -25,7 +25,7 @@ except ImportError:
     sys.exit(1)
 
 # ── Config ──────────────────────────────────────────────────────────
-BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
+BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 TRAINING_FILE = os.path.join(os.path.dirname(__file__), "training_data_together.jsonl")
 STATE_FILE = os.path.join(os.path.dirname(__file__), ".together_state.json")
 
@@ -33,7 +33,7 @@ LORA_R = 16
 LORA_ALPHA = 32
 EPOCHS = 3
 LEARNING_RATE = 1e-5
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 
 
 def load_state():
