@@ -2,8 +2,9 @@
 gerbil-lora-output/
 gerbil-qwen-gguf/
 
-# Downloaded adapter and converted GGUF
+# Downloaded adapter, merged model, and converted GGUF
 together-adapter/
+together-merged/
 gerbil-lora-adapter.gguf
 
 # llama.cpp (cloned for converter)
