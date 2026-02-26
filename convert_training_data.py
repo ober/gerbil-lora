@@ -54,6 +54,88 @@ def normalize_code(code: str) -> str:
     return code.strip()
 
 
+def gerbilize_text(text: str) -> str:
+    """Convert non-idiomatic Scheme patterns to idiomatic Gerbil in text.
+
+    Gerbil uses `def` not `define`, `defmacro`/`defrule` not `define-macro`, etc.
+    This runs on assistant message content to ensure the model learns Gerbil idioms.
+    """
+    # (define (name args) body) → (def (name args) body)
+    # (define name value) → (def name value)
+    # But NOT define-class, define-type, etc. — only bare `define`
+    text = re.sub(r'\(define\s+(?!\w*-)', '(def ', text)
+    # (define-macro → (defmacro  (rare in training data but worth catching)
+    text = text.replace('(define-macro ', '(defmacro ')
+    return text
+
+
+def gerbilize_entry(entry: dict) -> dict:
+    """Apply gerbilize_text to all assistant messages in a ChatML entry."""
+    new_convos = []
+    for msg in entry["conversations"]:
+        if msg["role"] == "assistant":
+            new_convos.append({**msg, "content": gerbilize_text(msg["content"])})
+        else:
+            new_convos.append(msg)
+    return {**entry, "conversations": new_convos}
+
+
+def gerbilize_alpaca(entry: dict) -> dict:
+    """Apply gerbilize_text to the output field of an Alpaca entry."""
+    return {**entry, "output": gerbilize_text(entry["output"])}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Gerbil Convention Teaching Examples
+# ═══════════════════════════════════════════════════════════════════════
+
+CONVENTION_EXAMPLES = [
+    {
+        "q": "What's the difference between `define` and `def` in Gerbil Scheme?",
+        "a": "In Gerbil Scheme, `def` is the idiomatic way to define bindings. While `define` works (inherited from Gambit/R5RS), idiomatic Gerbil code always uses `def`:\n\n```scheme\n;; Idiomatic Gerbil:\n(def x 42)\n(def (greet name) (string-append \"Hello, \" name))\n\n;; NOT idiomatic (avoid):\n(define x 42)\n(define (greet name) (string-append \"Hello, \" name))\n```\n\nSimilarly, use `defvalues`, `defrule`, `defclass`, `defstruct`, `defmethod` — all with the `def` prefix."
+    },
+    {
+        "q": "Show me a basic Gerbil Scheme function definition.",
+        "a": "```scheme\n(def (factorial n)\n  (if (<= n 1) 1\n      (* n (factorial (- n 1)))))\n```\n\nIn Gerbil, always use `def` (not `define`) to define functions and variables."
+    },
+    {
+        "q": "How should I define variables and functions in Gerbil?",
+        "a": "Use `def` for all definitions in Gerbil Scheme:\n\n```scheme\n;; Variable\n(def my-list [1 2 3])\n\n;; Function\n(def (add a b) (+ a b))\n\n;; With let bindings\n(def (process items)\n  (let ((count (length items)))\n    (displayln (format \"Processing ~a items\" count))))\n```\n\nKey Gerbil conventions:\n- `def` not `define`\n- `defrule` for simple macros (not `define-macro`)\n- `defclass`/`defstruct` for types\n- `defmethod` for methods\n- Square brackets `[1 2 3]` for list literals"
+    },
+    {
+        "q": "What are the key syntactic differences between Gerbil and standard Scheme?",
+        "a": "Gerbil has several syntactic differences from R5RS/R7RS Scheme:\n\n1. **`def` instead of `define`** — `(def x 42)` not `(define x 42)`\n2. **Square bracket lists** — `[1 2 3]` is sugar for `(list 1 2 3)`\n3. **`defrule` for macros** — `(defrule (my-mac x) ...)` not `(define-syntax ...)`\n4. **`using` for imports** — `(import :std/iter)` with colon-prefixed module paths\n5. **`hash` literals** — `(hash (a 1) (b 2))` for hash tables\n6. **`defstruct`/`defclass`** — not `define-record-type`\n7. **`export`** — explicit exports in module headers\n8. **`match`** — built-in pattern matching from `:std/sugar`\n\n```scheme\n(import :std/sugar :std/iter)\n(export main)\n\n(def (main . args)\n  (for (x (in-range 10))\n    (displayln x)))\n```"
+    },
+    {
+        "q": "Convert this standard Scheme to Gerbil: (define (map-double lst) (map (lambda (x) (* x 2)) lst))",
+        "a": "```scheme\n(def (map-double lst)\n  (map (lambda (x) (* x 2)) lst))\n```\n\nThe main change is `define` → `def`. Gerbil keeps `lambda`, `map`, `let`, `cond`, `if`, and most core Scheme forms unchanged — it's primarily the definition forms that differ."
+    },
+]
+
+
+def generate_convention_entries() -> tuple[list, list]:
+    """Generate training entries that teach Gerbil-specific conventions."""
+    chatml_entries = []
+    alpaca_entries = []
+
+    for i, ex in enumerate(CONVENTION_EXAMPLES):
+        # Repeat each convention example 3x to increase weight
+        for rep in range(3):
+            source_id = f"convention:gerbil-idiom-{i}:rep{rep}"
+            chatml_entries.append(make_chatml([
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": ex["q"]},
+                {"role": "assistant", "content": ex["a"]},
+            ], source_id))
+            alpaca_entries.append(make_alpaca(
+                instruction=ex["q"],
+                output=ex["a"],
+                source_id=source_id,
+            ))
+
+    return chatml_entries, alpaca_entries
+
+
 def make_chatml(conversations: list[dict], source_id: str) -> dict:
     """Create a ChatML/ShareGPT format entry."""
     return {
@@ -850,6 +932,18 @@ def main():
     all_chatml.extend(c)
     all_alpaca.extend(a)
     print(f"  → {len(c)} ChatML, {len(a)} Alpaca entries")
+
+    # ── 11. Convention Examples ────────────────────────────────────────
+    print("Generating Gerbil convention examples ...")
+    c, a = generate_convention_entries()
+    all_chatml.extend(c)
+    all_alpaca.extend(a)
+    print(f"  → {len(c)} ChatML, {len(a)} Alpaca entries")
+
+    # ── Gerbilize all entries ─────────────────────────────────────────
+    print("\nGerbilizing: converting (define → (def, (define-macro → (defmacro ...")
+    all_chatml = [gerbilize_entry(e) for e in all_chatml]
+    all_alpaca = [gerbilize_alpaca(e) for e in all_alpaca]
 
     # ── Dedup and write ──────────────────────────────────────────────
     print(f"\nTotal before dedup: {len(all_chatml)} ChatML, {len(all_alpaca)} Alpaca")
