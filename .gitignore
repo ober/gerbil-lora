@@ -2,6 +2,13 @@
 gerbil-lora-output/
 gerbil-qwen-gguf/
 
+# Downloaded adapter and converted GGUF
+together-adapter/
+gerbil-lora-adapter.gguf
+
+# llama.cpp (cloned for converter)
+llama.cpp/
+
 # Together AI state
 .together_state.json
 

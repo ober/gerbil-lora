@@ -6,9 +6,10 @@
 - [x] Upload training data to Together AI
 - [x] Start fine-tuning job (ft-5f979336-8831)
 - [x] Training completed (~7 min, 63 steps, 3 epochs, 2.1M tokens)
+- [ ] Download adapter and convert to GGUF
+- [ ] Deploy locally with Ollama
 - [ ] Verify model with test prompts
-- [ ] Download adapter for local/portable use
-- [ ] Deploy and connect to OpenCode
+- [ ] Connect to OpenCode
 
 ---
 
@@ -40,7 +41,7 @@ together files upload ~/mine/gerbil-lora/training_data_together.jsonl
 # Returns file ID: file-f2144ecd-69ce-4dbb-bfda-e6a2a01ab2ed
 ```
 
-## Step 3: Train (DONE — running)
+## Step 3: Train (DONE)
 
 ```bash
 python3 train_together.py train
@@ -59,130 +60,86 @@ Model: `jaimef_2515/Qwen2.5-7B-Instruct-74900ead`
 
 Training completed in ~7 minutes: 63 steps, 3 epochs, 2.1M tokens trained.
 
-## Step 4: Monitor
+## Step 4: Monitor (DONE)
 
 ```bash
 python3 train_together.py status
 # Or: together fine-tuning retrieve ft-5f979336-8831
-# Takes ~30-60 minutes
 ```
-
-## Step 5: Create a Dedicated Endpoint
-
-Fine-tuned models on Together AI are NOT serverless — they need a dedicated endpoint.
-
-Create one via the UI or CLI:
-```bash
-# Via UI (check pricing first):
-# https://api.together.ai/models/jaimef_2515/Qwen2.5-7B-Instruct-74900ead
-
-# Via CLI:
-together endpoints create \
-  --model jaimef_2515/Qwen2.5-7B-Instruct-74900ead \
-  --display-name gerbil-qwen \
-  --hardware 2x_nvidia_h100_80gb_sxm
-```
-
-**Warning:** The only available hardware is 2x H100 at **$0.11/min ($6.60/hr)**.
-This is expensive for casual use. Strongly consider downloading the adapter
-and running locally with Ollama instead (see Step 8).
-
-Stop the endpoint immediately when not testing:
-```bash
-together endpoints delete <endpoint-id>
-```
-
-## Step 6: Test on Together AI
-
-```bash
-python3 train_together.py test
-# Or:
-python3 verify_model.py \
-  --base-url https://api.together.xyz/v1 \
-  --model jaimef_2515/Qwen2.5-7B-Instruct-74900ead \
-  --api-key $TOGETHER_API_KEY -v
-```
-
-## Step 7: Use with OpenCode (hosted on Together AI)
-
-Point OpenCode at Together AI's API:
-
-```
-Base URL: https://api.together.xyz/v1
-API Key:  $TOGETHER_API_KEY
-Model:    jaimef_2515/Qwen2.5-7B-Instruct-74900ead
-```
-
-Costs per hour while endpoint is running. Stop when not in use.
 
 ---
 
-## Step 6: Download and Run Locally with Ollama (recommended)
+## Step 5: Download and Run Locally with Ollama (recommended)
 
 Together AI's dedicated endpoints cost $6.60/hr. Running locally is free.
 
-### 6a. Download the LoRA adapter from Together AI
+**No merge required!** Ollama supports LoRA adapters natively. We download the
+small adapter (~50-200MB), convert it to GGUF, and Ollama applies it on the
+fly over the base model. No GPU or 32GB RAM needed for the conversion step.
+
+### One-command setup
 
 ```bash
-cd ~/mine/gerbil-lora
-together fine-tuning download ft-5f979336-8831 --output ./together-adapter
+./download_and_convert.sh
+```
+
+This runs all the steps below automatically.
+
+### 5a. Download the LoRA adapter from Together AI
+
+```bash
+together fine-tuning download ft-5f979336-8831 \
+  --checkpoint-type adapter \
+  --output_dir ./together-adapter
 ```
 
 This gives you the LoRA adapter weights (~50-200MB) — the diff that makes
 the base Qwen model know Gerbil Scheme.
 
-### 6b. Install merge dependencies
+### 5b. Install lightweight converter dependencies
 
-You need Python packages to merge the adapter into the base model and
-convert to GGUF format. This requires a GPU with 16GB+ VRAM, OR ~32GB RAM
-for CPU-only merge.
-
-```bash
-pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
-pip install --no-deps xformers trl peft accelerate bitsandbytes triton
-```
-
-### 6c. Merge adapter + base model → GGUF
-
-This downloads the base model (~14GB), applies the LoRA adapter on top,
-and quantizes to a single GGUF file that Ollama can run:
+No Unsloth, no GPU, no 32GB RAM needed. Just some Python packages
+and llama.cpp's converter script:
 
 ```bash
-python3 merge_and_export.py \
-  --adapter ./together-adapter \
-  --base Qwen/Qwen2.5-7B-Instruct \
-  --quant q4_k_m
+python3 -m pip install --break-system-packages gguf transformers safetensors
+python3 -m pip install --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu
+git clone --depth 1 --filter=blob:none --sparse \
+  https://github.com/ggml-org/llama.cpp.git
+cd llama.cpp && git sparse-checkout set --skip-checks convert_lora_to_gguf.py gguf-py scripts && cd ..
 ```
 
-The `--base` flag downloads Qwen/Qwen2.5-7B-Instruct from HuggingFace
-automatically (one-time ~14GB download, cached for future use).
+### 5c. Convert adapter to GGUF
 
-Quantization options:
+```bash
+python3 llama.cpp/convert_lora_to_gguf.py \
+  --outfile ./gerbil-lora-adapter.gguf \
+  ./together-adapter
+```
 
-| Quantization | GGUF Size | VRAM to Run | Speed | Quality |
-|-------------|-----------|-------------|-------|---------|
-| `q4_k_m` | ~4.5 GB | ~5 GB | ~30-40 tok/s | Good enough |
-| `q5_k_m` | ~5.5 GB | ~6 GB | ~25-35 tok/s | Better |
-| `q8_0` | ~7.5 GB | ~8 GB | ~20-25 tok/s | Near-lossless |
-| `f16` | ~14 GB | ~14 GB | ~15-20 tok/s | Perfect |
+This only processes the small adapter weights — no need to download or
+load the full 14GB base model.
 
-### 6d. Install Ollama (if not already installed)
+### 5d. Install Ollama (if not already installed)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-### 6e. Import the GGUF into Ollama
+### 5e. Pull base model and create gerbil-qwen
 
 ```bash
-cd ~/mine/gerbil-lora
+# Pull the base model (one-time ~4.7GB download)
+ollama pull qwen2.5:7b-instruct
+
+# Create the model with the LoRA adapter applied
 ollama create gerbil-qwen -f Modelfile
 ```
 
-The `Modelfile` in this repo points to `./gerbil-qwen-gguf/unsloth.Q4_K_M.gguf`
-and sets up the Qwen ChatML template and system prompt.
+The `Modelfile` uses `FROM qwen2.5:7b-instruct` and applies the adapter
+via the `ADAPTER` instruction. No merge needed — Ollama handles it at runtime.
 
-### 6f. Test it
+### 5f. Test it
 
 ```bash
 ollama run gerbil-qwen "How do I parse JSON in Gerbil Scheme?"
@@ -196,7 +153,7 @@ python3 verify_model.py \
   -v
 ```
 
-### 6g. Configure OpenCode
+### 5g. Configure OpenCode
 
 Point OpenCode at your local Ollama:
 
@@ -211,18 +168,43 @@ Free forever. No API costs, no idle charges, fully private.
 
 | Hardware | Works? | Speed |
 |----------|--------|-------|
-| RTX 3060/4060 (8GB) | Yes, Q4 | ~30-40 tok/s |
-| RTX 3090/4090 (24GB) | Yes, any quant | ~40+ tok/s |
-| Mac M1/M2 8GB | Yes, Q4 | ~20-30 tok/s |
-| Mac M1/M2 16GB+ | Yes, Q8 | ~25-35 tok/s |
-| CPU only, 16GB+ RAM | Yes, Q4 | ~5-10 tok/s |
+| RTX 3060/4060 (8GB) | Yes | ~30-40 tok/s |
+| RTX 3090/4090 (24GB) | Yes | ~40+ tok/s |
+| Mac M1/M2 8GB | Yes | ~20-30 tok/s |
+| Mac M1/M2 16GB+ | Yes | ~25-35 tok/s |
+| CPU only, 16GB+ RAM | Yes | ~5-10 tok/s |
 
 ---
 
+## Alternative: Together AI Hosted (expensive)
+
+Fine-tuned Qwen 7B is NOT available for serverless LoRA on Together AI
+(only Qwen 72B and Llama models are supported). The only hosted option
+is a dedicated endpoint at **$6.60/hr** (2x H100), which is impractical.
+
+If you want serverless pay-per-token inference, you'd need to retrain
+on a supported base model like `Meta-Llama/Meta-Llama-3.1-8B-Instruct-Reference`.
+
+```bash
+# Retrain on Llama 3.1 8B (supported for serverless LoRA):
+# 1. Update BASE_MODEL in train_together.py
+# 2. python3 train_together.py upload
+# 3. python3 train_together.py train
+# Then use serverless inference at per-token prices — no endpoint needed.
+```
+
+## Alternative: Cloud Merge (if you need a merged GGUF)
+
+If for some reason you need a single merged GGUF file (not separate
+base + adapter), you can:
+
+1. **HuggingFace GGUF-my-LoRA Space** — upload adapter, it merges in the cloud
+2. **Google Colab** — free T4 GPU with ~12.7GB RAM, enough for a 7B merge
+3. **Together AI merged download** — `together fine-tuning download ft-5f979336-8831 --checkpoint-type merged`
+
 ## Alternative: Host Anywhere Else
 
-The downloaded adapter is standard PEFT/HuggingFace format. After merging,
-deploy to any platform:
+The downloaded adapter is standard PEFT/HuggingFace format. Deploy to any platform:
 
 - **HuggingFace Inference Endpoints** — push merged model, get API
 - **RunPod / Vast.ai** — deploy vLLM container (~$0.15-0.30/hr)
@@ -269,4 +251,4 @@ To improve the model with more data:
 2. Regenerate: `python3 convert_training_data.py`
 3. Re-upload: `python3 train_together.py upload`
 4. Retrain: `python3 train_together.py train`
-5. Re-download and merge: steps 6a-6e above
+5. Re-download and convert: `./download_and_convert.sh`
