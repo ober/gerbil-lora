@@ -80,26 +80,22 @@ Replace `<ENDPOINT_ID>` and `<RUNPOD_API_KEY>` with your values from the RunPod 
 
 ## Deploy to RunPod
 
-Upload the merged model to HuggingFace and deploy on RunPod serverless (scale-to-zero):
+One script handles everything: downloads merged model, uploads to HuggingFace, creates RunPod endpoint via API.
 
 ```bash
 # Prerequisites
 pip install together huggingface_hub
 export TOGETHER_API_KEY="your-key"
-hf auth login   # needs write token
+export RUNPOD_API_KEY="your-key"   # from https://www.runpod.io/console/user/settings
+hf auth login                       # needs write token
 
-# Deploy (downloads merged model from Together AI, uploads to HuggingFace)
-./deploy_runpod.sh jaimef/gerbil-qwen-7b
+# Deploy (downloads merged model, uploads to HF, creates RunPod endpoint)
+./deploy_runpod.sh jaimef21/gerbil-qwen-7b
 ```
 
-The script downloads the pre-merged model from Together AI (~14GB, merged server-side — no local GPU or 32GB RAM needed), uploads to HuggingFace, then prints RunPod setup instructions.
+The script outputs the endpoint ID, API URL, and ready-to-paste OpenCode config.
 
-### RunPod endpoint setup
-
-1. Go to https://www.runpod.io/console/serverless
-2. Click **New Endpoint**, search for **vLLM**, click Deploy
-3. Set: Model = `jaimef/gerbil-qwen-7b`, GPU = 16GB+, Min Workers = 0, Max Workers = 1
-4. Your endpoint URL: `https://api.runpod.ai/v2/<ENDPOINT_ID>/openai/v1`
+Your endpoint URL: `https://api.runpod.ai/v2/<ENDPOINT_ID>/openai/v1`
 
 ## Build from Source
 
@@ -135,6 +131,7 @@ python3 train_together.py status
 
 **Hosted (RunPod serverless):**
 ```bash
+export RUNPOD_API_KEY="your-key"
 hf auth login
 ./deploy_runpod.sh YOUR_USERNAME/gerbil-qwen-7b
 ```

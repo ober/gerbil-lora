@@ -19,11 +19,11 @@
 
 Generated **5,985 training entries** in `~/mine/gerbil-lora/`:
 
-| File | Format | Size |
-|------|--------|------|
+| File                           | Format                 | Size   |
+|--------------------------------|------------------------|--------|
 | `training_data_together.jsonl` | Together AI (messages) | 8.5 MB |
-| `training_data.jsonl` | ChatML/ShareGPT | 8.9 MB |
-| `training_data_alpaca.jsonl` | Alpaca JSONL | 6.2 MB |
+| `training_data.jsonl`          | ChatML/ShareGPT        | 8.9 MB |
+| `training_data_alpaca.jsonl`   | Alpaca JSONL           | 6.2 MB |
 
 Regenerate: `python3 convert_training_data.py`
 
@@ -91,11 +91,11 @@ Configure OpenCode (`~/.config/opencode/opencode.json`):
 }
 ```
 
-| Hardware | Speed |
-|----------|-------|
-| GPU (8GB+ VRAM) | ~30-40 tok/s |
-| Mac M-series | ~20-35 tok/s |
-| CPU only | ~5-10 tok/s (painful for OpenCode) |
+| Hardware        | Speed                              |
+|-----------------|------------------------------------|
+| GPU (8GB+ VRAM) | ~30-40 tok/s                       |
+| Mac M-series    | ~20-35 tok/s                       |
+| CPU only        | ~5-10 tok/s (painful for OpenCode) |
 
 ### Option B: RunPod Serverless (recommended if no local GPU)
 
@@ -105,34 +105,23 @@ Scale-to-zero — **$0 when idle**, ~$0.34/hr only while generating.
 # Prerequisites
 pip install together huggingface_hub
 export TOGETHER_API_KEY="your-key"
-hf auth login   # needs write token from https://huggingface.co/settings/tokens
+export RUNPOD_API_KEY="your-key"   # from https://www.runpod.io/console/user/settings
+hf auth login                       # needs write token from https://huggingface.co/settings/tokens
 
-# Download merged model from Together AI and upload to HuggingFace
-./deploy_runpod.sh jaimef/gerbil-qwen-7b
+# One command does everything:
+#   1. Downloads pre-merged model from Together AI (~14GB, merged server-side)
+#   2. Uploads to HuggingFace
+#   3. Creates RunPod serverless vLLM template + endpoint via GraphQL API
+./deploy_runpod.sh jaimef21/gerbil-qwen-7b
 ```
 
-This downloads the pre-merged model from Together AI (~14GB, merged server-side — no local GPU needed), uploads it to HuggingFace, then prints RunPod setup instructions.
-
-#### Create RunPod endpoint
-
-1. Go to https://www.runpod.io/console/serverless
-2. Click **New Endpoint**
-3. Search for **vLLM** in RunPod Hub, click **Deploy**
-4. Configure:
-   - **Model**: `jaimef/gerbil-qwen-7b`
-   - **GPU**: 16GB+ (RTX 4000 SFF Ada is cheapest for 7B)
-   - **Min Workers**: 0 (scale to zero when idle)
-   - **Max Workers**: 1 (cap spend at one GPU)
-   - **Idle Timeout**: 60 seconds
-5. Click **Deploy**
+The script outputs the endpoint ID, API URL, and a ready-to-paste OpenCode config.
 
 Your endpoint URL: `https://api.runpod.ai/v2/<ENDPOINT_ID>/openai/v1`
 
-Get your API key: https://www.runpod.io/console/user/settings
-
 #### Configure OpenCode
 
-Add to `~/.config/opencode/opencode.json`:
+The deploy script prints the exact config. Add to `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -156,13 +145,13 @@ Add to `~/.config/opencode/opencode.json`:
 
 #### Estimated monthly costs
 
-| Usage | Hours/month | Cost/month |
-|-------|-------------|------------|
-| Idle (scale-to-zero) | 0 | **$0** |
-| Light (1hr/day) | ~30 | **~$10** |
-| Moderate (3hr/day) | ~90 | **~$31** |
-| Heavy (8hr/day) | ~240 | **~$82** |
-| Always on 24/7 | 720 | **~$245** |
+| Usage                | Hours/month | Cost/month |
+|----------------------|-------------|------------|
+| Idle (scale-to-zero) | 0           | **$0**     |
+| Light (1hr/day)      | ~30         | **~$10**   |
+| Moderate (3hr/day)   | ~90         | **~$31**   |
+| Heavy (8hr/day)      | ~240        | **~$82**   |
+| Always on 24/7       | 720         | **~$245**  |
 
 ### Option C: Together AI Dedicated Endpoint (expensive, not recommended)
 
