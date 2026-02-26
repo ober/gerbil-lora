@@ -18,15 +18,16 @@ Add the Ollama provider and model to `~/.config/opencode/opencode.json`:
   "$schema": "https://opencode.ai/config.json",
   "provider": {
     "ollama": {
-      "type": "@ai-sdk/openai-compatible",
-      "baseURL": "http://localhost:11434/v1"
-    }
-  },
-  "model": {
-    "gerbil-qwen": {
-      "provider": "ollama",
-      "model": "jaimef/gerbil-qwen",
-      "contextWindow": 32768
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "gerbil-qwen": {
+          "name": "Gerbil Qwen"
+        }
+      }
     }
   }
 }
