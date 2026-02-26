@@ -79,11 +79,18 @@ Create one via the UI or CLI:
 # Via CLI:
 together endpoints create \
   --model jaimef_2515/Qwen2.5-7B-Instruct-74900ead \
-  --name gerbil-qwen
+  --display-name gerbil-qwen \
+  --hardware 2x_nvidia_h100_80gb_sxm
 ```
 
-**Note:** Dedicated endpoints have an hourly cost. Stop the endpoint when not in use.
-This is a good reason to download the adapter for local Ollama use (see Step 8).
+**Warning:** The only available hardware is 2x H100 at **$0.11/min ($6.60/hr)**.
+This is expensive for casual use. Strongly consider downloading the adapter
+and running locally with Ollama instead (see Step 8).
+
+Stop the endpoint immediately when not testing:
+```bash
+together endpoints delete <endpoint-id>
+```
 
 ## Step 6: Test on Together AI
 
