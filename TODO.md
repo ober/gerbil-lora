@@ -5,7 +5,7 @@
 - [x] Generate training data (5,970 entries from cookbooks, docs, source code)
 - [x] Upload training data to Together AI
 - [x] Start fine-tuning job (ft-5f979336-8831)
-- [ ] Training completes
+- [x] Training completed (~7 min, 63 steps, 3 epochs, 2.1M tokens)
 - [ ] Verify model with test prompts
 - [ ] Download adapter for local/portable use
 - [ ] Deploy and connect to OpenCode
@@ -55,6 +55,9 @@ together fine-tuning create \
 ```
 
 Job ID: `ft-5f979336-8831`
+Model: `jaimef_2515/Qwen2.5-7B-Instruct-74900ead`
+
+Training completed in ~7 minutes: 63 steps, 3 epochs, 2.1M tokens trained.
 
 ## Step 4: Monitor
 
@@ -71,8 +74,8 @@ python3 train_together.py test
 # Or:
 python3 verify_model.py \
   --base-url https://api.together.xyz/v1 \
-  --model <model-name-from-status> \
-  --api-key $TOGETHER_API_KEY
+  --model jaimef_2515/Qwen2.5-7B-Instruct-74900ead \
+  --api-key $TOGETHER_API_KEY -v
 ```
 
 ## Step 6: Use with OpenCode (hosted on Together AI)
@@ -82,7 +85,7 @@ Point OpenCode at Together AI's API:
 ```
 Base URL: https://api.together.xyz/v1
 API Key:  $TOGETHER_API_KEY
-Model:    <model-name-from-status>
+Model:    jaimef_2515/Qwen2.5-7B-Instruct-74900ead
 ```
 
 Pay-per-token, no idle costs (~$0.20/M tokens).
@@ -95,6 +98,8 @@ The trained LoRA adapter is yours. Download it to use anywhere:
 
 ```bash
 together fine-tuning download ft-5f979336-8831 --output ./together-adapter
+# Adapter also available at:
+# s3://together-dev/finetune/.../ft-5f979336-8831_adapter-2026-02-26-02-46-54
 ```
 
 ### Run locally with Ollama
