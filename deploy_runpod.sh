@@ -123,7 +123,7 @@ echo "Creating RunPod serverless template ..."
 TEMPLATE_RESULT=$(curl -s --request POST \
     --header 'content-type: application/json' \
     --url "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
-    --data "{\"query\": \"mutation { saveTemplate(input: { name: \\\"gerbil-qwen-vllm\\\", imageName: \\\"runpod/worker-v1-vllm:stable-cuda12.1.0\\\", isServerless: true, containerDiskInGb: 20, env: [ { key: \\\"MODEL_NAME\\\", value: \\\"$HF_REPO\\\" }, { key: \\\"MAX_MODEL_LEN\\\", value: \\\"32768\\\" }, { key: \\\"GPU_MEMORY_UTILIZATION\\\", value: \\\"0.95\\\" } ] }) { id name imageName } }\"}")
+    --data "{\"query\": \"mutation { saveTemplate(input: { name: \\\"gerbil-qwen-vllm\\\", imageName: \\\"runpod/worker-v1-vllm:stable-cuda12.1.0\\\", isServerless: true, containerDiskInGb: 20, dockerArgs: \\\"\\\", volumeInGb: 0, env: [ { key: \\\"MODEL_NAME\\\", value: \\\"$HF_REPO\\\" }, { key: \\\"MAX_MODEL_LEN\\\", value: \\\"32768\\\" }, { key: \\\"GPU_MEMORY_UTILIZATION\\\", value: \\\"0.95\\\" } ] }) { id name imageName } }\"}")
 
 TEMPLATE_ID=$(echo "$TEMPLATE_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['saveTemplate']['id'])" 2>/dev/null || true)
 
