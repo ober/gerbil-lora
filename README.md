@@ -15,7 +15,7 @@ ollama run jaimef/gerbil-qwen "How do I parse JSON in Gerbil Scheme?"
 |--------|------|-------|-------|
 | **Local Ollama (GPU)** | Free | 30-40 tok/s | `ollama pull jaimef/gerbil-qwen` |
 | **Local Ollama (CPU)** | Free | 5-10 tok/s (slow) | Same as above |
-| **RunPod Serverless** | $0 idle, ~$0.34/hr active | 30-40 tok/s | `./deploy_runpod.sh` |
+| **RunPod Serverless** | $0 idle, ~$0.39/hr active | 30-40 tok/s | `./deploy_runpod.sh` |
 | **Together AI Endpoint** | $6.60/hr always-on | Fast | Not recommended |
 
 ### Estimated RunPod monthly costs
@@ -185,6 +185,9 @@ ollama push YOUR_USERNAME/gerbil-qwen
 | `train_together.py` | Upload, train, and monitor on Together AI |
 | `download_and_convert.sh` | Download adapter, convert to GGUF, set up Ollama |
 | `deploy_runpod.sh` | Upload merged model to HuggingFace for RunPod deployment |
+| `manage_runpod.sh` | RunPod endpoint lifecycle (list, health, delete, purge) |
+| `push_ollama.sh` | Tag and push model to Ollama registry |
+| `configure_opencode.sh` | Generate OpenCode config for Ollama/RunPod |
 | `verify_model.py` | Run 10 Gerbil-specific test prompts |
 | `train_unsloth.py` | Local GPU training with Unsloth |
 | `merge_and_export.py` | Merge adapter + base to GGUF (needs 32GB RAM or GPU) |

@@ -9,9 +9,13 @@
 - [x] Download adapter and convert to GGUF
 - [x] Deploy locally with Ollama
 - [x] Push to Ollama registry (`ollama push jaimef/gerbil-qwen`)
-- [ ] Deploy to RunPod serverless (hosted, scale-to-zero)
-- [ ] Verify model with test prompts
-- [ ] Connect to OpenCode
+- [x] Deploy to RunPod serverless (hosted, scale-to-zero)
+- [x] Verify model with test prompts
+- [x] Connect to OpenCode
+- [x] Add manage_runpod.sh (list, health, delete, purge endpoints)
+- [x] Add push_ollama.sh (tag and push to Ollama registry)
+- [x] Add configure_opencode.sh (generate OpenCode config)
+- [x] Fix deploy_runpod.sh (AMPERE_24, MAX_MODEL_LEN=8192, GPU_MEMORY_UTILIZATION=0.90)
 
 ---
 

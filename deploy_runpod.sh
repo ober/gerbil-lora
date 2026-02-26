@@ -123,7 +123,7 @@ echo "Creating RunPod serverless template ..."
 TEMPLATE_RESULT=$(curl -s --request POST \
     --header 'content-type: application/json' \
     --url "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
-    --data "{\"query\": \"mutation { saveTemplate(input: { name: \\\"gerbil-qwen-vllm\\\", imageName: \\\"runpod/worker-v1-vllm:stable-cuda12.1.0\\\", isServerless: true, containerDiskInGb: 20, dockerArgs: \\\"\\\", volumeInGb: 0, env: [ { key: \\\"MODEL_NAME\\\", value: \\\"$HF_REPO\\\" }, { key: \\\"MAX_MODEL_LEN\\\", value: \\\"32768\\\" }, { key: \\\"GPU_MEMORY_UTILIZATION\\\", value: \\\"0.95\\\" } ] }) { id name imageName } }\"}")
+    --data "{\"query\": \"mutation { saveTemplate(input: { name: \\\"gerbil-qwen-vllm\\\", imageName: \\\"runpod/worker-v1-vllm:stable-cuda12.1.0\\\", isServerless: true, containerDiskInGb: 20, dockerArgs: \\\"\\\", volumeInGb: 0, env: [ { key: \\\"MODEL_NAME\\\", value: \\\"$HF_REPO\\\" }, { key: \\\"MAX_MODEL_LEN\\\", value: \\\"8192\\\" }, { key: \\\"GPU_MEMORY_UTILIZATION\\\", value: \\\"0.90\\\" } ] }) { id name imageName } }\"}")
 
 TEMPLATE_ID=$(echo "$TEMPLATE_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['saveTemplate']['id'])" 2>/dev/null || true)
 
@@ -142,7 +142,7 @@ else
     ENDPOINT_RESULT=$(curl -s --request POST \
         --header 'content-type: application/json' \
         --url "https://api.runpod.io/graphql?api_key=${RUNPOD_API_KEY}" \
-        --data "{\"query\": \"mutation { saveEndpoint(input: { name: \\\"gerbil-qwen\\\", templateId: \\\"$TEMPLATE_ID\\\", gpuIds: \\\"AMPERE_16\\\", workersMin: 0, workersMax: 1, idleTimeout: 60, scalerType: \\\"QUEUE_DELAY\\\", scalerValue: 4 }) { id name gpuIds templateId workersMin workersMax idleTimeout } }\"}")
+        --data "{\"query\": \"mutation { saveEndpoint(input: { name: \\\"gerbil-qwen\\\", templateId: \\\"$TEMPLATE_ID\\\", gpuIds: \\\"AMPERE_24\\\", workersMin: 0, workersMax: 1, idleTimeout: 60, scalerType: \\\"QUEUE_DELAY\\\", scalerValue: 4 }) { id name gpuIds templateId workersMin workersMax idleTimeout } }\"}")
 
     ENDPOINT_ID=$(echo "$ENDPOINT_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['saveEndpoint']['id'])" 2>/dev/null || true)
 
@@ -158,7 +158,7 @@ else
         echo "  Endpoint ID:  $ENDPOINT_ID"
         echo "  API URL:      https://api.runpod.ai/v2/$ENDPOINT_ID/openai/v1"
         echo "  Console:      https://www.runpod.io/console/serverless/$ENDPOINT_ID"
-        echo "  GPU:          AMPERE_16 (~\$0.34/hr)"
+        echo "  GPU:          AMPERE_24 (~\$0.39/hr)"
         echo "  Min Workers:  0 (scale to zero)"
         echo "  Max Workers:  1"
         echo "  Idle Timeout: 60s"
@@ -173,7 +173,7 @@ if [ "${MANUAL:-0}" = "1" ]; then
     echo "  2. Click 'New Endpoint'"
     echo "  3. Search for 'vLLM' and click Deploy"
     echo "  4. Set: Model = $HF_REPO"
-    echo "     GPU: 16GB+ (AMPERE_16 = cheapest for 7B)"
+    echo "     GPU: 24GB+ (AMPERE_24 recommended for 7B)"
     echo "     Min Workers: 0, Max Workers: 1"
     echo "     Idle Timeout: 60s"
     echo "  5. Click Deploy"
