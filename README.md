@@ -1,120 +1,149 @@
-# Gerbil Scheme LoRA Training Data
+# Gerbil Scheme LoRA
 
-Training dataset for fine-tuning open-source LLMs to understand Gerbil Scheme, a dialect of Scheme built on Gambit.
+A fine-tuned Qwen 2.5 7B model that knows Gerbil Scheme. Run locally with Ollama or pull from the registry.
 
-## Dataset Files
-
-| File | Format | Size | Description |
-|------|--------|------|-------------|
-| `training_data.jsonl` | ChatML/ShareGPT | ~8.9MB | Primary format for most LoRA tools (LLaMA-Factory, Axolotl, etc.) |
-| `training_data_alpaca.jsonl` | Alpaca JSONL | ~6.2MB | Alpaca format (instruction/input/output) per line |
-| `training_data_alpaca.json` | Alpaca JSON | ~6.3MB | Same as above, as a single JSON array |
-
-## Statistics
-
-- **Total entries:** 5,970
-- **Median entry length:** 854 characters
-- **Mean entry length:** 1,338 characters
-- **Entries > ~4096 tokens:** 5 (0.08%)
-
-### By source category
-
-| Source | Count | Description |
-|--------|-------|-------------|
-| doc | 2,301 | Official Gerbil reference documentation |
-| cookbook | 1,783 | Verified working code recipes with imports |
-| api | 1,635 | Individual API function documentation |
-| tutorial | 142 | Tutorial source code and explanations |
-| test | 91 | Test files showing real API usage |
-| security | 70 | Security vulnerability patterns and fixes |
-| source | 34 | Tutorial and example .ss source files |
-| gambit | 31 | Gambit Scheme examples (FFI, threading) |
-| std-source | 21 | Standard library implementation excerpts |
-| errorfix | 1 | Error message to fix mappings |
-
-## Data Sources
-
-1. **cookbooks.json** (683 recipes) - Curated, verified Gerbil code patterns with correct imports, arities, and gotcha documentation
-2. **security-rules.json** (35 rules) - Vulnerability patterns for Gerbil FFI and C code
-3. **error-fixes.json** - Error message to fix mappings
-4. **gerbil-mcp resource docs** - Idiom guides, stdlib map, pattern matching, actors, FFI interop
-5. **Gerbil official docs** (~150 .md files) - Full API reference, guides, tutorials
-6. **Gerbil source code** (~830 .ss files) - Standard library and core implementation
-7. **Gambit examples** - FFI examples, threading, Tcl/Tk, web-repl
-8. **Test files** (~100 test files) - Real API usage patterns
-
-## ChatML Format
-
-Each entry in `training_data.jsonl`:
-
-```json
-{
-  "conversations": [
-    {"role": "system", "content": "You are an expert in Gerbil Scheme..."},
-    {"role": "user", "content": "How do I parse JSON in Gerbil?"},
-    {"role": "assistant", "content": "You'll need to import :std/text/json\n\n```scheme\n(import :std/text/json)\n(def data (string->json-object \"{\\\"key\\\": \\\"value\\\"}\"))\n```\n\n**Notes:** ..."}
-  ],
-  "source": "cookbook:json-parse:howto"
-}
-```
-
-## Alpaca Format
-
-Each entry in `training_data_alpaca.jsonl`:
-
-```json
-{
-  "instruction": "How do I parse JSON in Gerbil?",
-  "input": "",
-  "output": "You'll need to import :std/text/json ...",
-  "source": "cookbook:json-parse:howto"
-}
-```
-
-## Entry Types
-
-- **howto** - "How do I X in Gerbil?" with complete code and imports
-- **example** - "Show me an example of X" with just code + notes
-- **imports** - "What imports do I need for X?"
-- **gotcha** - "What's wrong with this code?" showing common mistakes
-- **security** - "Is this safe?" pattern for FFI and shell code
-- **errorfix** - "I'm getting error X, how do I fix it?"
-- **full** - Complete document or source file as a teaching entry
-- **section** - Individual documentation section as a focused Q&A
-
-## Usage
-
-### With LLaMA-Factory
-
-```yaml
-dataset_info:
-  gerbil_scheme:
-    file_name: training_data.jsonl
-    formatting: sharegpt
-    columns:
-      messages: conversations
-```
-
-### With Axolotl
-
-```yaml
-datasets:
-  - path: ./training_data.jsonl
-    type: sharegpt
-```
-
-### With Unsloth / HuggingFace
-
-Load as a standard JSONL dataset and use the Alpaca format.
-
-## Regenerating
+## Quick Start
 
 ```bash
+ollama pull jaimef/gerbil-qwen
+ollama run jaimef/gerbil-qwen "How do I parse JSON in Gerbil Scheme?"
+```
+
+## Use with OpenCode
+
+Add the Ollama provider and model to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ollama": {
+      "type": "@ai-sdk/openai-compatible",
+      "baseURL": "http://localhost:11434/v1"
+    }
+  },
+  "model": {
+    "gerbil-qwen": {
+      "provider": "ollama",
+      "model": "jaimef/gerbil-qwen",
+      "contextWindow": 32768
+    }
+  }
+}
+```
+
+Then select `gerbil-qwen` as your model in OpenCode.
+
+## Build from Source
+
+If you want to retrain or customize the model yourself:
+
+### 1. Generate training data
+
+Requires the Gerbil source repos:
+
+```bash
+# Clone dependencies
+git clone https://github.com/mighty-gerbils/gerbil.git ~/mine/gerbil
+git clone https://github.com/gambit/gambit.git ~/mine/gambit
+git clone https://github.com/ober/gerbil-mcp.git ~/mine/gerbil-mcp
+
+# Generate training data (5,985 entries, ~8.5MB)
 python3 convert_training_data.py
 ```
 
-Requires:
-- `~/mine/gerbil-mcp/` - MCP server repo with cookbook/security data
-- `~/mine/gerbil/` - Gerbil Scheme source repo
-- `~/mine/gambit/` - Gambit Scheme source repo
-# gerbil-lora
+### 2. Train on Together AI (~$3, ~7 minutes)
+
+```bash
+pip install together
+export TOGETHER_API_KEY="your-key"
+
+python3 train_together.py upload   # upload training data
+python3 train_together.py train    # start LoRA fine-tuning
+python3 train_together.py status   # check progress
+```
+
+### 3. Download adapter and convert to GGUF
+
+No GPU or 32GB RAM needed — Ollama applies the LoRA adapter at runtime.
+
+```bash
+./download_and_convert.sh
+```
+
+This script:
+1. Downloads the LoRA adapter from Together AI (~150MB)
+2. Clones llama.cpp's converter (sparse checkout)
+3. Converts the adapter to GGUF format
+4. Pulls `qwen2.5:7b-instruct` base model in Ollama
+5. Creates the `gerbil-qwen` model with the adapter applied
+
+### 4. Verify
+
+```bash
+ollama run gerbil-qwen "How do I iterate over a hash table in Gerbil?"
+```
+
+Or run the full test suite:
+
+```bash
+python3 verify_model.py \
+  --base-url http://localhost:11434/v1 \
+  --model gerbil-qwen -v
+```
+
+### 5. Push to Ollama registry
+
+```bash
+ollama cp gerbil-qwen YOUR_USERNAME/gerbil-qwen
+ollama push YOUR_USERNAME/gerbil-qwen
+```
+
+## Training Data
+
+**5,985 entries** from 11 sources, post-processed to use idiomatic Gerbil conventions (`def` not `define`).
+
+| Source | Count | Description |
+|--------|-------|-------------|
+| doc | 2,301 | Official Gerbil reference docs |
+| cookbook | 1,783 | Verified working code recipes |
+| api | 1,635 | Individual API function docs |
+| test | 91 | Test files showing real usage |
+| security | 70 | Vulnerability patterns and fixes |
+| source | 34 | Tutorial/example .ss files |
+| gambit | 31 | Gambit interop examples |
+| std-source | 21 | Standard library source excerpts |
+| convention | 15 | Gerbil idiom teaching examples |
+| tutorial | 3 | Official tutorials |
+| errorfix | 1 | Error-to-fix mappings |
+
+### Output formats
+
+| File | Format | Use with |
+|------|--------|----------|
+| `training_data_together.jsonl` | Together AI messages | Together AI fine-tuning |
+| `training_data.jsonl` | ChatML/ShareGPT | LLaMA-Factory, Axolotl |
+| `training_data_alpaca.jsonl` | Alpaca JSONL | Unsloth, HuggingFace |
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `convert_training_data.py` | Generate training data from source repos |
+| `train_together.py` | Upload, train, and monitor on Together AI |
+| `train_unsloth.py` | Local GPU training with Unsloth |
+| `merge_and_export.py` | Merge adapter + base model to GGUF (needs 32GB RAM or GPU) |
+| `download_and_convert.sh` | Download adapter, convert to GGUF, set up Ollama (no GPU needed) |
+| `verify_model.py` | Run 10 Gerbil-specific test prompts |
+| `train_runpod.sh` | One-shot training on rented GPU |
+| `Modelfile` | Ollama model definition |
+
+## Iterating
+
+To improve the model with more training data:
+
+1. Add recipes to the gerbil-mcp cookbook
+2. `python3 convert_training_data.py`
+3. `python3 train_together.py upload`
+4. `python3 train_together.py train`
+5. `./download_and_convert.sh`
